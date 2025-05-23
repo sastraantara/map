@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Vector Tiles Speed Display - Mapbox</title>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; }
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+        .mapboxgl-popup {
+            max-width: 250px;
+            font-family: Arial, sans-serif;
+        }
+        .speed-popup {
+            padding: 10px;
+            background: #fff;
+            border-radius: 5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script>
+        // Ganti dengan access token Mapbox Anda jika berbeda
+        mapboxgl.accessToken = 'pk.eyJ1Ijoic2FzdHJhYW50YXJhMTkiLCJhIjoiY21iMDYzdGU5MG15ZDJqc2NvNzlobWIwMCJ9.fTJ8PkMKJll4es-lDHtURg';
+        
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/outdoors-v12',  // Ganti style sesuai kebutuhan
+            center: [106.8, -6.1],  // Jakarta coordinates [lng, lat]
+            zoom: 5,
+            maxZoom: 18,
+            minZoom: 3
+        });
+
+        map.on('load', () => {
+            // Tambahkan sumber vector tiles
+            map.addSource('speed-tiles', {
+                type: 'vector',
+                url: 'http://localhost:8080/tiles2/tiles.json'  // URL ke TileJSON Anda
+            });
+
+            // --- Memuat ikon SVG kustom Anda menggunakan objek Image ---
+            const iconName = 'custom-arrow-icon'; // Nama unik untuk ikon Anda di Mapbox
+            const iconUrl = 'http://localhost:8080/tiles2/arrow.svg'; // URL ke file arrow.svg Anda
+
+            const img = new Image();
+            // Anda bisa mengatur lebar dan tinggi di sini jika perlu,
+            // contoh: img.width = 24; img.height = 24;
+
+            img.onload = () => {
+                console.log(`Berhasil memuat gambar dari ${iconUrl} ke objek Image.`);
+                if (!map.hasImage(iconName)) {
+                    try {
+                        // { sdf: true } penting agar `icon-color` berfungsi dan penskalaan berkualitas tinggi.
+                        // Pastikan SVG Anda satu warna atau dirancang untuk SDF.
+                        map.addImage(iconName, img, { sdf: true });
+                        console.log(`Ikon "${iconName}" berhasil ditambahkan ke peta.`);
+
+                        // Tambahkan layer SETELAH ikon berhasil ditambahkan ke peta
+                        map.addLayer({
+                            id: 'speed-layer',
+                            source: 'speed-tiles',
+                            'source-layer': 'wind_arrow_20250410T1800',  // Ganti dengan nama layer sumber Anda
+                            type: 'symbol',
+                            layout: {
+                                'icon-image': iconName, // Gunakan nama ikon kustom Anda
+                                'icon-size': 1.0,       // Sesuaikan ukuran ikon jika perlu (1.0 adalah ukuran normal)
+                                'icon-rotate': ['get', 'direction'], // Mengambil 'direction' dari properti fitur
+                                'icon-allow-overlap': true,
+                                'icon-ignore-placement': true
+                            },
+                            paint: {
+                                'icon-color': [
+                                    'case',
+                                    ['has', 'speed'],
+                                    [
+                                        'interpolate',
+                                        ['linear'],
+                                        ['get', 'speed'],
+                                        0, '#00ff00',   // Hijau untuk speed rendah
+                                        50, '#ffff00',  // Kuning
+                                        100, '#ff0000'  // Merah untuk speed tinggi
+                                    ],
+                                    '#cccccc'           // Warna default jika tidak ada speed
+                                ],
+                                'icon-opacity': 0.9     // Opasitas ikon (opsional)
+                            }
+                        });
+
+                        // Event listener untuk layer (setelah layer ditambahkan)
+                        map.on('click', 'speed-layer', (e) => {
+                            const features = e.features;
+                            if (!features || features.length === 0) return;
+
+                            const properties = features[0].properties;
+                            const speed = properties.speed ? `${properties.speed} km/h` : 'No data';
+                            const coordinates = e.lngLat.toArray();
+
+                            new mapboxgl.Popup()
+                                .setLngLat(coordinates)
+                                .setHTML(`
+                                    <div class="speed-popup">
+                                        <h3>Speed Information</h3>
+                                        <p><strong>Speed:</strong> ${speed}</p>
+                                        ${properties.timestamp ? `<p><strong>Time:</strong> ${new Date(properties.timestamp).toLocaleString()}</p>` : ''}
+                                        ${properties.direction ? `<p><strong>Direction:</strong> ${properties.direction}°</p>` : ''}
+                                    </div>
+                                `)
+                                .addTo(map);
+                        });
+
+                        map.on('mouseenter', 'speed-layer', () => {
+                            map.getCanvas().style.cursor = 'pointer';
+                        });
+
+                        map.on('mouseleave', 'speed-layer', () => {
+                            map.getCanvas().style.cursor = '';
+                        });
+
+                    } catch (addImgError) {
+                        console.error(`Error saat map.addImage untuk ikon "${iconName}":`, addImgError);
+                        alert(`Gagal menambahkan ikon "${iconName}" ke peta setelah ikon dimuat. Error: ${addImgError.message}. Cek konsol (F12).`);
+                    }
+                } else {
+                    console.log(`Ikon "${iconName}" sudah ada di peta. Jika layer belum muncul, pastikan logika penambahan layer sudah benar.`);
+                    // Jika ikon sudah ada tapi layer belum, Anda mungkin perlu logika tambahan di sini
+                    // untuk memastikan layer ditambahkan jika belum ada.
+                    // Namun, untuk pemuatan awal, seharusnya blok try di atas yang berjalan.
+                }
+            }; // Akhir dari img.onload
+
+            img.onerror = (e) => {
+                // Error ini sangat penting! Jika ini terpicu, berarti browser sendiri gagal memuat/mendekode SVG.
+                console.error(`Error pada Image.onerror untuk ${iconUrl}: File SVG tidak dapat dimuat atau didekode oleh browser.`, e);
+                alert(`GAGAL memuat atau mendekode file SVG dari ${iconUrl}. Pastikan file SVG valid dan disajikan dengan benar oleh server. Lihat konsol (F12) untuk detail error pada objek gambar.`);
+            };
+
+            // Atur img.src *setelah* event handler (onload, onerror) didefinisikan.
+            img.src = iconUrl;
+            // --- Akhir dari memuat ikon SVG kustom ---
+        }); // Akhir dari map.on('load')
+
+        // Error handling umum untuk peta
+        map.on('error', (e) => {
+            console.error('Map error:', e.error ? e.error.message : e);
+            // Hindari alert yang terlalu umum jika error spesifik bisa ditangani atau dicatat
+            if (e.error && e.error.message && e.error.message.toLowerCase().includes('failed to load tile')) {
+                console.warn('Sebuah tile gagal dimuat. Periksa URL sumber vector tile dan server Anda.');
+            } else {
+                // alert('Terjadi kesalahan umum dalam memuat atau menampilkan peta.');
+                console.error('Terjadi kesalahan umum pada peta.');
+            }
+        });
+
+        // Source data event listener (bisa berguna untuk debugging source)
+        map.on('sourcedata', (e) => {
+            if (e.sourceId === 'speed-tiles') {
+                if (e.isSourceLoaded && e.sourceDataType !== 'metadata') {
+                    const source = map.getSource('speed-tiles');
+                    if (!source || source.type !== 'vector') {
+                        console.error('Source "speed-tiles" gagal dimuat atau bukan tipe vector.');
+                    } else {
+                        // console.log('Source "speed-tiles" berhasil dimuat.');
+                    }
+                } else if (e.error) {
+                    console.error(`Error loading data untuk source "speed-tiles":`, e.error.message);
+                }
+            }
+        });
+    </script>
+</body>
+</html>
