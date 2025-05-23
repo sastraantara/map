@@ -43,12 +43,12 @@
             // Tambahkan sumber vector tiles
             map.addSource('speed-tiles', {
                 type: 'vector',
-                url: 'http://localhost:8080/tiles2/tiles.json'  // URL ke TileJSON Anda
+                url: 'tiles2/tiles.json'  // URL ke TileJSON Anda
             });
 
             // --- Memuat ikon SVG kustom Anda menggunakan objek Image ---
             const iconName = 'custom-arrow-icon'; // Nama unik untuk ikon Anda di Mapbox
-            const iconUrl = 'http://localhost:8080/tiles2/arrow.svg'; // URL ke file arrow.svg Anda
+            const iconUrl = 'arrow.svg'; // URL ke file arrow.svg Anda
 
             const img = new Image();
             // Anda bisa mengatur lebar dan tinggi di sini jika perlu,
